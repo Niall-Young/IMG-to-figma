@@ -11,13 +11,14 @@
 - 为按钮、输入框、导航、卡片、标签页等组件补齐默认、hover、active/click、focus 和 disabled 状态。
 - 默认使用 `@hugeicons/react` 和 `@hugeicons/core-free-icons` 作为基础 UI 图标来源。
 - 对 logo、品牌标识、吉祥物、IP、插画、照片、缩略图等视觉资产，使用截图裁切、用户提供素材或 image2/image generation 生成独立图片资产，不用粗糙 SVG 或 DOM 文本硬凑。
-- 执行 Figma Code to Canvas capture，并优先把结果作为 `text/html` 写入系统剪贴板；失败时提供本地复制页。
+- 用本机 Chrome + Playwright Core 执行 Figma Code to Canvas capture，并优先把结果作为 `text/html` 写入系统剪贴板；失败时提供本地复制页。
 
 ## 关键原则
 
 - 默认只有用户截图是可信输入；除非用户明确提供 URL 或素材，否则不去抓原网站资源。
 - 基础线性图标、面型图标全部使用 Hugeicons React 包。
 - 插画、IP、吉祥物、照片、产品图、复杂品牌图形优先作为图片资产处理。
+- Codex 内置浏览器只用于视觉检查；capture 必须通过本机 Chrome + Playwright Core 执行，避免只读 evaluate 环境阻止注入脚本。
 - `figma-capture.txt` 只是调试备份产物，不能让用户手动复制其文本内容，否则 Figma 会粘成一大段文字。
 - 最终交付必须明确说明：Figma `text/html` payload 是否已经写入剪贴板，或提供可点击的本地 paste helper URL。
 
@@ -33,6 +34,7 @@ screenshot-to-figma/
   references/
     reconstruction-rules.md
   scripts/
+    capture_with_chrome.mjs
     copy_figma_payload_to_clipboard.swift
 ```
 

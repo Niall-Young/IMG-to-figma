@@ -157,11 +157,24 @@ Before capture:
 - Check that text does not overflow controls and that hover/active/disabled states do not shift layout.
 - Confirm images load, fonts are ready, SVG icons render, and no visible broken assets remain.
 - Scroll through long pages once to trigger lazy content before running capture.
+- The Codex in-app browser is acceptable for visual verification, but do not use its `evaluate` surface for Figma capture because it can be read-only and block script injection.
 
 ## Figma Capture Rules
 
 - Use `assets/capture-for-design.js` without changing the capture sequence.
 - Keep `selector: "body"` by default.
+- Execute capture in the user's local Chrome through Playwright Core with `scripts/capture_with_chrome.mjs`; do not execute capture through the Codex in-app browser `evaluate`.
+- Run the helper against the React dev server URL:
+
+```bash
+cd /path/to/react-project
+node /path/to/img-to-figma/scripts/capture_with_chrome.mjs \
+  --url http://127.0.0.1:5173 \
+  --out ./figma-capture.txt \
+  --viewport 1440x900
+```
+
+- Use the actual skill script path, such as the installed skill path under `$CODEX_HOME/skills/img-to-figma/scripts/capture_with_chrome.mjs`. If the helper cannot import `playwright-core`, install it in the React project with `npm i -D playwright-core` and rerun the helper from that project directory. The helper launches local Chrome with `channel: "chrome"`.
 - Treat the capture result as an HTML clipboard payload, not readable user text.
 - The payload should begin with `<span data-h2d="<!--(figh2d)` and must be copied to Figma as MIME type `text/html`.
 - Save the payload as `figma-capture.txt` next to the React project for traceability only.

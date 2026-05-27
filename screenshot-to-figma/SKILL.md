@@ -25,7 +25,7 @@ For detailed reconstruction standards, read `references/reconstruction-rules.md`
    - Use image2/image generation for mascots, IP characters, illustrations, banners, thumbnails, product imagery, or visual art that is present in the screenshot but not supplied as a cutout.
    - Keep mascots/IP as separate transparent-background assets and preserve the screenshot's pose, action, expression, proportions, and style as closely as possible.
 6. Start the React dev server, render the app in a browser, compare it against the screenshot, and revise until the layout, density, component treatment, and visual hierarchy are acceptably close.
-7. Run the capture script from `assets/capture-for-design.js` in the page context after the React app has loaded and fonts/images are ready.
+7. Run the capture script from `assets/capture-for-design.js` in local Chrome through Playwright Core after the React app has loaded and fonts/images are ready. Do not use the Codex in-app browser `evaluate` path for capture; that environment can be read-only and may block script injection.
 8. Deliver the result as Figma-pasteable `text/html`:
    - Save the captured `text/html` payload as `figma-capture.txt` beside the React project for traceability only.
    - Write that payload to the system clipboard as HTML before the final response when the environment allows it.
@@ -37,14 +37,19 @@ For detailed reconstruction standards, read `references/reconstruction-rules.md`
 
 Use `assets/capture-for-design.js` as the canonical script. Keep `selector: "body"` unless the user explicitly asks to capture a smaller root.
 
-Recommended browser-console flow:
+Default execution path:
 
-```javascript
-// Paste the contents of assets/capture-for-design.js into the page console.
-// The resolved value is the Figma-pasteable capture payload.
+```bash
+cd /path/to/react-project
+node /path/to/img-to-figma/scripts/capture_with_chrome.mjs \
+  --url http://127.0.0.1:5173 \
+  --out ./figma-capture.txt \
+  --viewport 1440x900
 ```
 
-If browser automation is available, open the local React dev server or preview URL, wait for fonts/images, then evaluate the same script in the page context. Do not rewrite the capture logic ad hoc.
+Run this helper from the React project directory so it can resolve that project's `playwright-core` dependency. Use the actual skill script path, such as the installed skill path under `$CODEX_HOME/skills/img-to-figma/scripts/capture_with_chrome.mjs`. The helper launches the user's local Chrome (`channel: "chrome"`), opens the React dev server URL, evaluates the same capture script in that page, validates the Figma payload prefix, and writes `figma-capture.txt`.
+
+The Codex in-app browser may still be used for visual verification screenshots, but not for the capture execution step. Do not rewrite the capture logic ad hoc.
 
 ## Clipboard Delivery
 
@@ -80,4 +85,5 @@ Return these items at the end of the task:
 
 - `references/reconstruction-rules.md` - detailed `design.md`, React reconstruction, component-state, asset-generation, Hugeicons, and export rules.
 - `assets/capture-for-design.js` - canonical Figma Code to Canvas capture script.
+- `scripts/capture_with_chrome.mjs` - Playwright Core helper that runs capture in local Chrome and writes `figma-capture.txt`.
 - `scripts/copy_figma_payload_to_clipboard.swift` - macOS helper for writing `figma-capture.txt` to the clipboard as `text/html`.
