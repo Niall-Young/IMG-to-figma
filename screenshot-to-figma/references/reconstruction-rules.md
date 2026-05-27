@@ -25,6 +25,7 @@ Use this structure unless the screenshot requires a small adjustment:
 - Size:
 - Device/viewport:
 - Background:
+- Capture root/background layers:
 
 ## Layout
 - Regions:
@@ -68,6 +69,7 @@ After creating `design.md`, implement the React app from that spec. If the visua
 - Use JavaScript JSX by default. The usual minimum files are `package.json`, `index.html`, `src/main.jsx`, `src/App.jsx`, `src/styles.css`, and `assets/`.
 - Install and use `react`, `react-dom`, `vite`, `@vitejs/plugin-react`, `@hugeicons/react`, and `@hugeicons/core-free-icons`.
 - Start the dev server and capture the rendered React page through `http://127.0.0.1:...` or `http://localhost:...`, not `file://`.
+- Add `data-figma-capture-root` to the top-level reconstructed page element. Give it explicit `width`, `min-height`, and the screenshot's opaque base background color.
 - Match the screenshot first; avoid adding explanatory text, onboarding copy, or controls that are not visible or implied.
 - Treat the screenshot as the default and only source of truth. Do not browse the original site, fetch production assets, or use external brand files unless the user explicitly provides or requests those sources.
 - Use CSS variables for repeated colors, radii, shadows, and spacing when it helps keep the page coherent.
@@ -77,6 +79,51 @@ After creating `design.md`, implement the React app from that spec. If the visua
 - Give fixed-format UI elements stable dimensions with `width`, `height`, `aspect-ratio`, grid tracks, or `min/max` constraints so states do not cause layout shift.
 - Avoid placeholder rectangles. If the screenshot contains visual content and no source asset is available, generate or approximate the asset.
 - Keep generated React code local and deterministic enough that browser capture works from the dev server without remote runtime dependencies besides installed npm packages.
+
+## Background Capture Rules
+
+Figma html-to-design can drop background paint when it lives only on `html`, `body`, transparent gradients, blend effects, or pseudo-elements. Dark UIs are especially fragile, so backgrounds must be explicit captured DOM layers.
+
+- Put the screenshot's base fill on `[data-figma-capture-root]`, not only on `body` or `#root`.
+- For every full-width band, panel, card, hero, footer, and canvas-sized region, set an explicit opaque `background-color` that matches the screenshot before adding gradients or overlays.
+- If a region uses gradients, use an opaque base plus gradient overlays. Never use only transparent gradients over a transparent parent for a dark background.
+- Prefer real child elements for decorative background layers that must appear in Figma, for example `<div className="bg-layer" aria-hidden="true" />`. Do not rely on `::before` or `::after` as the only visible background.
+- Avoid `mix-blend-mode`, `backdrop-filter`, and shadow-only fills as required background structure; use them only as secondary polish over a solid layer.
+- CSS pattern:
+
+```css
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  background: #0b1220;
+}
+
+.capture-root {
+  position: relative;
+  width: 1440px;
+  min-height: 100vh;
+  overflow: hidden;
+  background-color: #0b1220;
+}
+
+.section-dark {
+  position: relative;
+  background-color: #111a2b;
+  background-image: linear-gradient(135deg, rgba(40, 82, 150, 0.28), rgba(8, 13, 24, 0));
+}
+```
+
+```jsx
+export default function App() {
+  return (
+    <main className="capture-root" data-figma-capture-root>
+      <section className="section-dark">...</section>
+    </main>
+  );
+}
+```
 
 ## Component State Requirements
 
@@ -156,13 +203,14 @@ Before capture:
 - Take or inspect a rendered screenshot and compare it against the original.
 - Check that text does not overflow controls and that hover/active/disabled states do not shift layout.
 - Confirm images load, fonts are ready, SVG icons render, and no visible broken assets remain.
+- Confirm dark or colored backgrounds are visible as solid fills, not just transparent gradient overlays. Inspect root and section CSS if the screenshot has a non-white background.
 - Scroll through long pages once to trigger lazy content before running capture.
 - The Codex in-app browser is acceptable for visual verification, but do not use its `evaluate` surface for Figma capture because it can be read-only and block script injection.
 
 ## Figma Capture Rules
 
 - Use `assets/capture-for-design.js` without changing the capture sequence.
-- Keep `selector: "body"` by default.
+- The capture script targets `[data-figma-capture-root]` when present and falls back to `body` only for older reconstructions. New React reconstructions must include `[data-figma-capture-root]`.
 - Execute capture in the user's local Chrome through Playwright Core with `scripts/capture_with_chrome.mjs`; do not execute capture through the Codex in-app browser `evaluate`.
 - Run the helper against the React dev server URL:
 

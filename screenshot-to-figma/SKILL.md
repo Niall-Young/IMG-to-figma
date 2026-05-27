@@ -17,16 +17,17 @@ For detailed reconstruction standards, read `references/reconstruction-rules.md`
 2. Create a Vite React project for the reconstruction unless the user explicitly requests a different React setup. Use JavaScript JSX by default and include `react`, `react-dom`, `vite`, `@vitejs/plugin-react`, `@hugeicons/react`, and `@hugeicons/core-free-icons`.
 3. Implement the screenshot as interactive React UI, not static pixels. Include default, hover, active/click, focus where relevant, and disabled states for buttons, inputs, tabs, cards, nav items, toggles, menus, and other controls.
 4. Use Hugeicons React packages for all generic UI icons. Import `HugeiconsIcon` from `@hugeicons/react` and icon definitions from `@hugeicons/core-free-icons`; choose the closest matching Hugeicons icon for every icon-like glyph. Do not hand-inline Hugeicons SVG, use SVG sprites, icon fonts, external icon scripts, or CDN-only references.
-5. For missing raster or visual assets, generate or derive images rather than using blank placeholders:
+5. Preserve backgrounds as real captured layers. Put `data-figma-capture-root` on the top-level React frame and give that element explicit width/min-height plus an opaque base background color. Do not rely on `body`/`html` background, transparent gradients, blend modes, shadows, or pseudo-elements as the only source of a dark or colored background.
+6. For missing raster or visual assets, generate or derive images rather than using blank placeholders:
    - Assume the user only provided the screenshot. Do not fetch the original website/app assets, inspect the live product, or rely on external brand files unless the user explicitly provides a URL/source asset or asks you to use external sources.
    - Treat logos, brand marks, customer marks, badges, mascots, illustrations, photos, and product shots as image assets, not DOM text or CSS-only approximations.
    - For logos/brand marks, create separate image files and insert them with `<img>`. Prefer a crop/cutout from the supplied screenshot when available; otherwise generate or rasterize a logo-like image asset that visually matches the screenshot.
    - Do not substitute brand marks, mascots, illustrations, thumbnails, product images, or brand-specific pictorial icons with rough hand-authored SVG. If a supplied/extracted source is SVG but contains embedded fonts/text or complex illustration, rasterize it to PNG/WebP before capture so Figma imports it as a faithful image asset instead of decomposed low-quality vectors or editable text.
    - Use image2/image generation for mascots, IP characters, illustrations, banners, thumbnails, product imagery, or visual art that is present in the screenshot but not supplied as a cutout.
    - Keep mascots/IP as separate transparent-background assets and preserve the screenshot's pose, action, expression, proportions, and style as closely as possible.
-6. Start the React dev server, render the app in a browser, compare it against the screenshot, and revise until the layout, density, component treatment, and visual hierarchy are acceptably close.
-7. Run the capture script from `assets/capture-for-design.js` in local Chrome through Playwright Core after the React app has loaded and fonts/images are ready. Do not use the Codex in-app browser `evaluate` path for capture; that environment can be read-only and may block script injection.
-8. Deliver the result as Figma-pasteable `text/html`:
+7. Start the React dev server, render the app in a browser, compare it against the screenshot, and revise until the layout, density, component treatment, background fills, and visual hierarchy are acceptably close.
+8. Run the capture script from `assets/capture-for-design.js` in local Chrome through Playwright Core after the React app has loaded and fonts/images are ready. Do not use the Codex in-app browser `evaluate` path for capture; that environment can be read-only and may block script injection.
+9. Deliver the result as Figma-pasteable `text/html`:
    - Save the captured `text/html` payload as `figma-capture.txt` beside the React project for traceability only.
    - Write that payload to the system clipboard as HTML before the final response when the environment allows it.
    - If direct clipboard writing is unavailable, create or copy an HTTP-served paste helper page that writes the payload with `ClipboardItem({"text/html": ...})`.
@@ -35,7 +36,7 @@ For detailed reconstruction standards, read `references/reconstruction-rules.md`
 
 ## Capture Procedure
 
-Use `assets/capture-for-design.js` as the canonical script. Keep `selector: "body"` unless the user explicitly asks to capture a smaller root.
+Use `assets/capture-for-design.js` as the canonical script. It captures `[data-figma-capture-root]` when present and falls back to `body` only for older reconstructions. New React reconstructions must provide `[data-figma-capture-root]` with an opaque background.
 
 Default execution path:
 

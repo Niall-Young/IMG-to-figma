@@ -10,6 +10,7 @@
 - 创建 Vite React 项目，使用 JSX 和 CSS 还原截图中的界面。
 - 为按钮、输入框、导航、卡片、标签页等组件补齐默认、hover、active/click、focus 和 disabled 状态。
 - 默认使用 `@hugeicons/react` 和 `@hugeicons/core-free-icons` 作为基础 UI 图标来源。
+- 为 React 顶层还原容器添加 `data-figma-capture-root` 和明确的不透明背景色，避免深色背景在 Figma capture 后丢失。
 - 对 logo、品牌标识、吉祥物、IP、插画、照片、缩略图等视觉资产，使用截图裁切、用户提供素材或 image2/image generation 生成独立图片资产，不用粗糙 SVG 或 DOM 文本硬凑。
 - 用本机 Chrome + Playwright Core 执行 Figma Code to Canvas capture，并优先把结果作为 `text/html` 写入系统剪贴板；失败时提供本地复制页。
 
@@ -17,6 +18,7 @@
 
 - 默认只有用户截图是可信输入；除非用户明确提供 URL 或素材，否则不去抓原网站资源。
 - 基础线性图标、面型图标全部使用 Hugeicons React 包。
+- 背景必须是可捕获的真实 DOM 填充层：不要只把深色底放在 `body/html`、透明渐变、伪元素或阴影里。
 - 插画、IP、吉祥物、照片、产品图、复杂品牌图形优先作为图片资产处理。
 - Codex 内置浏览器只用于视觉检查；capture 必须通过本机 Chrome + Playwright Core 执行，避免只读 evaluate 环境阻止注入脚本。
 - `figma-capture.txt` 只是调试备份产物，不能让用户手动复制其文本内容，否则 Figma 会粘成一大段文字。

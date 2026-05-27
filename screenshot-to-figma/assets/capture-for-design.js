@@ -33,7 +33,14 @@
   await sleep(500);
 
   // 4) 复制模式抓取
+  // Prefer a real React capture root. Body/html background paints are often
+  // dropped by html-to-design, so reconstructed pages should provide an
+  // explicit element with data-figma-capture-root and an opaque background.
+  const selector = document.querySelector("[data-figma-capture-root]")
+    ? "[data-figma-capture-root]"
+    : "body";
+
   return await window.figma.captureForDesign({
-    selector: "body"
+    selector
   });
 })();
