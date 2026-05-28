@@ -11,7 +11,7 @@ const skillRoot = path.resolve(__dirname, "..");
 
 function usage() {
   console.error(`Usage:
-  node /path/to/img-to-figma/scripts/capture_with_chrome.mjs --url <react-dev-url> --out <figma-capture.txt> [--viewport 1440x900] [--script <capture-js>]
+  node /path/to/img-to-figma/scripts/capture_with_chrome.mjs --url <react-dev-url> --out <figma-capture.txt> [--viewport 1440x900] [--script <capture-js>] [--selector <css-selector>] [--capture-timeout 45000]
 
 Example:
   cd /path/to/react-project
@@ -20,6 +20,7 @@ Example:
 
 function readArgs(argv) {
   const args = {
+    captureTimeout: "45000",
     script: path.join(skillRoot, "assets", "capture-for-design.js"),
     viewport: "1440x900",
   };
@@ -35,12 +36,24 @@ function readArgs(argv) {
     i += 1;
   }
 
+  if (args["capture-timeout"]) {
+    args.captureTimeout = args["capture-timeout"];
+  }
+
   if (!args.url || !args.out) {
     usage();
     process.exit(2);
   }
 
   return args;
+}
+
+function numericArg(value, name) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    throw new Error(`Invalid ${name}: ${value}`);
+  }
+  return number;
 }
 
 function parseViewport(value) {
@@ -78,20 +91,58 @@ async function withTimeout(promise, ms, label) {
 }
 
 async function loadPlaywrightCore() {
+  const normalize = (mod) => {
+    const playwright = mod?.chromium ? mod : mod?.default;
+    if (!playwright?.chromium?.launch) {
+      throw new Error("Could not load Playwright chromium launcher.");
+    }
+    return playwright;
+  };
+
   try {
-    return await import("playwright-core");
+    return normalize(await import("playwright-core"));
   } catch (error) {
     try {
       const cwdRequire = createRequire(path.join(process.cwd(), "package.json"));
       const resolved = cwdRequire.resolve("playwright-core");
-      return await import(pathToFileURL(resolved).href);
+      return normalize(await import(pathToFileURL(resolved).href));
     } catch {
       throw new Error(
-        "Missing playwright-core. Run this helper from an environment where playwright-core is installed, or install it in the React project with `npm i -D playwright-core`.",
+        "Playwright import/launch failure: missing or incompatible playwright-core. Run this helper from an environment where playwright-core is installed, or install it in the React project with `npm i -D playwright-core`.",
         { cause: error },
       );
     }
   }
+}
+
+function attachPageDiagnostics(page) {
+  const logs = [];
+  page.on("console", (message) => {
+    logs.push(`[console:${message.type()}] ${message.text()}`);
+  });
+  page.on("pageerror", (error) => {
+    logs.push(`[pageerror] ${error.message}`);
+  });
+  return logs;
+}
+
+async function readCaptureDiagnostics(page, selector) {
+  return await page.evaluate((captureSelector) => {
+    const target = document.querySelector(captureSelector || "[data-figma-capture-root]") || document.body;
+    return {
+      captureForDesignType: typeof window.figma?.captureForDesign,
+      hasFigma: Boolean(window.figma),
+      imageCount: document.images.length,
+      loadedImages: Array.from(document.images).filter((img) => img.complete && img.naturalWidth > 0).length,
+      selector: captureSelector || (document.querySelector("[data-figma-capture-root]") ? "[data-figma-capture-root]" : "body"),
+      targetRect: target
+        ? {
+            height: Math.round(target.getBoundingClientRect().height),
+            width: Math.round(target.getBoundingClientRect().width),
+          }
+        : null,
+    };
+  }, selector || null);
 }
 
 const args = readArgs(process.argv.slice(2));
@@ -103,6 +154,7 @@ if (!existsSync(scriptPath)) {
 }
 
 const captureSource = readFileSync(scriptPath, "utf8");
+const captureTimeout = numericArg(args.captureTimeout, "--capture-timeout");
 const viewport = parseViewport(args.viewport);
 const origin = originFromUrl(args.url);
 const { chromium } = await loadPlaywrightCore();
@@ -118,13 +170,37 @@ try {
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin });
 
   const page = await context.newPage();
+  const pageLogs = attachPageDiagnostics(page);
   await page.goto(args.url, { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.bringToFront().catch(() => {});
   await page.waitForFunction(() => document.body && document.body.children.length > 0, null, { timeout: 10000 });
   await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+  await page.evaluate(
+    ({ captureSelector, timeoutMs }) => {
+      window.__FIGMA_CAPTURE_SELECTOR = captureSelector || undefined;
+      window.__FIGMA_CAPTURE_TIMEOUT_MS = timeoutMs;
+    },
+    { captureSelector: args.selector || null, timeoutMs: captureTimeout },
+  );
 
-  const payload = await withTimeout(page.evaluate(captureSource), 45000, "Figma capture");
+  let payload;
+  try {
+    payload = await withTimeout(page.evaluate(captureSource), captureTimeout + 5000, "Figma capture runtime");
+  } catch (error) {
+    const diagnostics = await readCaptureDiagnostics(page, args.selector).catch((diagnosticError) => ({
+      diagnosticError: diagnosticError.message,
+    }));
+    console.error("Figma capture diagnostics:");
+    console.error(JSON.stringify(diagnostics, null, 2));
+    if (pageLogs.length > 0) {
+      console.error("Browser console/page errors:");
+      for (const line of pageLogs.slice(-25)) console.error(line);
+    }
+    throw error;
+  }
+
   if (typeof payload !== "string" || !payload.startsWith("<span data-h2d=\"<!--(figh2d)")) {
-    throw new Error("Capture did not return a Figma text/html payload.");
+    throw new Error("Invalid payload prefix: capture did not return a Figma text/html payload.");
   }
 
   writeFileSync(outPath, payload, "utf8");

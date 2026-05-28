@@ -53,7 +53,8 @@ Use this structure unless the screenshot requires a small adjustment:
 
 ## Image Assets
 - Asset:
-  - Source: crop, user-supplied, or image2/image generation
+  - Source: user-supplied original, image generation output, or final-quality simple crop
+  - Reference crop: yes/no; path when used as image-generation reference
   - Final file:
   - Required size and treatment:
   - Verification: visually inspected in the rendered app, transparent corners checked when applicable
@@ -70,6 +71,18 @@ After creating `design.md`, implement the React app from that spec. If the visua
 - Create a Vite React app per screenshot unless the user asks for multiple screens or an existing project integration.
 - Use JavaScript JSX by default. The usual minimum files are `package.json`, `index.html`, `src/main.jsx`, `src/App.jsx`, `src/styles.css`, and `assets/`.
 - Install and use `react`, `react-dom`, `vite`, `@vitejs/plugin-react`, `@hugeicons/react`, and `@hugeicons/core-free-icons`.
+- Always create `vite.config.js` with the React plugin:
+
+```js
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [react()],
+});
+```
+
+Do not omit this file; missing React plugin configuration can produce runtime JSX errors such as `React is not defined`.
 - Start the dev server and capture the rendered React page through `http://127.0.0.1:...` or `http://localhost:...`, not `file://`.
 - Add `data-figma-capture-root` to the top-level reconstructed page element. Give it explicit `width`, `min-height`, and the screenshot's opaque base background color.
 - Match the screenshot first; avoid adding explanatory text, onboarding copy, or controls that are not visible or implied.
@@ -79,6 +92,8 @@ After creating `design.md`, implement the React app from that spec. If the visua
 - Do not recreate logos, customer marks, badges, mascots, illustrations, photos, or product imagery as live DOM text. Create separate image assets and insert them with `<img>`.
 - Do not hand-draw brand marks, mascots, illustrations, thumbnails, product images, or brand-specific pictorial icons as rough SVG approximations. Crop/extract from the screenshot, use user-supplied assets, use image generation, or rasterize the extracted result into image assets instead.
 - For human/character portraits, mascots, IP, photos, illustrations, product imagery, screenshots, project thumbnails, and hero artwork, never use hand-authored SVG/Canvas/CSS shapes as the source, even if the result is rasterized to PNG/WebP. That produces a placeholder, not the requested visual asset.
+- For human/character portraits, hero artwork, illustrations, photos, product imagery, and project/card thumbnails, never use a low-resolution crop from the input screenshot as the final asset. Use the crop only as an image-generation reference or temporary layout guide, then replace it with the persisted generated bitmap.
+- A screenshot crop is allowed as a final asset only for tiny/simple marks, UI badges, icons, or logos when the crop is already at final display quality. For complex visual content, `Source: screenshot crop` in `design.md` is a failed reconstruction unless the user explicitly asked for exact raw screenshot crops.
 - If image generation is used, the final React asset must be the selected generated bitmap or a direct crop/post-process of it. Do not create a script that later overwrites the same filename with an approximate SVG-generated PNG.
 - Give fixed-format UI elements stable dimensions with `width`, `height`, `aspect-ratio`, grid tracks, or `min/max` constraints so states do not cause layout shift.
 - Avoid placeholder rectangles. If the screenshot contains visual content and no source asset is available, generate or approximate the asset.
@@ -166,6 +181,8 @@ import { Home01Icon } from "@hugeicons/core-free-icons";
 
 Use image2/image generation when the screenshot includes an IP character, visual illustration, product image, mascot, or other asset that is not supplied as a cutout or extractable image.
 
+For complex visual assets visible in the screenshot, crop the screenshot only to create a reference/input image for generation. Do not stop at the crop. The final file referenced by React must be the generated bitmap persisted into the project.
+
 Required prompt core from the skill owner:
 
 ```text
@@ -214,20 +231,44 @@ Required sequence for each generated image asset:
 
 If `persist_imagegen_asset.mjs` cannot find a new generated image under `$CODEX_HOME/generated_images`, manually inspect `$CODEX_HOME/generated_images` by mtime once. If there is still no reusable file, stop before capture and report that the image generation output could not be persisted. Do not create a local SVG/Canvas/CSS stand-in just to keep moving. Use a user-supplied file or explicit CLI fallback only after the user agrees.
 
+### Capture Image Size Budget
+
+Figma HTML-to-design capture can time out when local images are much larger than their displayed size because the capture payload must load and encode those images. Large image generation outputs must be preserved as source artifacts, but the React page used for capture should reference capture-sized copies.
+
+Rules:
+
+- Default capture budget: max long edge `1600px`, max file size about `1.5MB` for each referenced local PNG/JPEG.
+- For images displayed under 600px wide, prefer max long edge `1200px`; for small thumbnails, `800px` is usually enough.
+- Keep alpha when the screenshot needs transparency. Downsample PNGs instead of replacing transparent cutouts with JPEG.
+- Do not upscale small assets.
+- Keep a backup of the original generated/cropped file before resizing.
+
+Run before browser verification and again before retrying a timed-out full capture:
+
+```bash
+node /path/to/img-to-figma/scripts/prepare_capture_assets.mjs \
+  /path/to/react-project \
+  --max-edge 1600 \
+  --max-bytes 1500000
+```
+
+If full capture times out after the smoke test passes, first check image dimensions and rerun this helper with a stricter budget such as `--max-edge 1200 --max-bytes 900000`. Then visually re-check the page and rerun the official capture. Do not switch to SVG fallback.
+
 ## Asset Provenance and Audit
 
 For every non-generic image in the React app, `design.md` must record the final file path and source type. This is not optional for hero artwork, portraits, mascots, illustrations, photos, product imagery, screenshots, or project thumbnails.
 
 Allowed source types:
 
-- Screenshot crop or cutout from the user-provided image.
 - User-supplied local file.
 - Image generation output, optionally post-processed for transparency, crop, color, or size.
+- Final-quality screenshot crop only for tiny/simple assets where `design.md` explicitly records that crop quality is sufficient.
 - Deterministic generation only for simple logos, abstract marks, geometric badges, generic icons, and background textures.
 
 Hard failure conditions:
 
 - A complex visual asset is created by `sharp`, Canvas, CSS, or SVG path code from scratch instead of using crop/user-supplied/image-generated bitmap input.
+- A complex visual asset such as a portrait, hero image, illustration, product image, or card/project thumbnail is recorded in `design.md` as a screenshot crop/原截图/切图 final source instead of image generation output or user-supplied original.
 - A script writes a file such as `hero-portrait.png`, `avatar.png`, `mascot.png`, `illustration.png`, `product.png`, `thumbnail.png`, or `project-*.png` from a hand-authored SVG body.
 - An image generation output was shown in the conversation but was not copied into the React project and verified as the file referenced by `<img>`.
 - The rendered page references a filename that differs from the verified generated/cropped bitmap.
@@ -257,6 +298,7 @@ Then visually inspect every hero/portrait/mascot/product/thumbnail image in the 
 
 Before capture:
 
+- Run `scripts/prepare_capture_assets.mjs` so generated/cropped bitmap assets are capture-sized rather than full-resolution originals.
 - Open the React app at the screenshot's approximate viewport size.
 - Take or inspect a rendered screenshot and compare it against the original.
 - Check that text does not overflow controls and that hover/active/disabled states do not shift layout.
@@ -270,7 +312,11 @@ Before capture:
 
 - Use `assets/capture-for-design.js` without changing the capture sequence.
 - The capture script targets `[data-figma-capture-root]` when present and falls back to `body` only for older reconstructions. New React reconstructions must include `[data-figma-capture-root]`.
+- Before full-page capture, run `scripts/capture_smoke_test.mjs`. If the minimal HTML block cannot produce a Figma `text/html` payload, the environment is blocked; stop and report the exact error instead of substituting another format.
+- If the smoke test passes but full capture times out, treat oversized images as the first suspect. Run `scripts/prepare_capture_assets.mjs` with a stricter budget before simplifying DOM or reporting a blocker.
+- Capture helpers must report which failure class occurred: Playwright import/launch failure, remote `capture.js` fetch failure, `window.figma.captureForDesign` runtime timeout, or invalid payload prefix. Include browser console/page errors and `window.figma` diagnostics when available.
 - Execute capture in the user's local Chrome through Playwright Core with `scripts/capture_with_chrome.mjs`; do not execute capture through the Codex in-app browser `evaluate`.
+- Do not switch to Figma Plugin API, Figma MCP, `use_figma`, or direct node creation as a fallback when the requested handoff is HTML-to-design capture. Direct Figma-file generation is a different workflow and must be explicitly requested by the user; it does not produce `figma-capture.txt`.
 - Run the helper against the React dev server URL:
 
 ```bash
@@ -289,4 +335,7 @@ node /path/to/img-to-figma/scripts/capture_with_chrome.mjs \
 - On macOS, prefer `swift scripts/copy_figma_payload_to_clipboard.swift <figma-capture.txt>` and verify `clipboard info` includes `«class HTML»`.
 - If browser clipboard copy is needed, open a helper page through `http://127.0.0.1`, not `file://`; `file://` pages often fail or degrade clipboard writes.
 - The final user-facing copy route is clipboard-first: say the Figma `text/html` payload is already on the clipboard and can be pasted into Figma. Only provide a paste helper URL if direct clipboard write fails.
+- Never use SVG as a substitute output when Figma capture fails. SVG, PNG, PDF, screenshots, and the React app itself are diagnostic artifacts only and do not satisfy the skill's output contract.
+- Never report direct Figma Plugin/API-created nodes as this skill's success output unless the user has explicitly changed the requested deliverable away from `figma-capture.txt`/HTML clipboard capture.
+- If smoke capture succeeds but full capture fails, isolate the failure by removing or simplifying suspect DOM/assets, then rerun the official capture. If no valid payload can be produced, report the capture blocker and do not claim a Figma-ready result.
 - Report any remaining mismatch honestly, such as unavailable exact font, inferred hidden state, or generated image differences.
